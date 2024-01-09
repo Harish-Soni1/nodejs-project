@@ -13,5 +13,10 @@ app.use(express.urlencoded({ extended: true, limit: "16kb" }))
 app.use(cors({ origin: process.env.CORS_ORIGIN, credentials: true }))
 
 
+// import routes
+import v1 from "./routes/v1.routes.js"
+
+app.use("/api/v1", v1)
+
 export {app};
 
