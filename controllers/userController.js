@@ -378,6 +378,78 @@ const updateUserCover = asyncHandler(async(req, res) => {
     }
 })
 
+const getChannelProfile = asyncHandler( async(req, res) => {
+    try {
+        
+        const {usreName} = req.params
+
+        if (!usreName) {
+            throw new ApiError(400, "userName is required")
+        }
+
+        const channel = await Users.aggregate([
+            {
+                $match: {
+                    userName: usreName?.toLowerCase()
+                },
+                $lookup: {
+                    from: "subscriptions",
+                    localField: "_id",
+                    foreignField: "channel",
+                    as: "subscribers"
+                },
+                $lookup: {
+                    from: "subscriptions",
+                    localField: "_id",
+                    foreignField: "subscribe",
+                    as: "subscribedTo"
+                },
+                $addFields: {
+                    subscribeCount: {
+                        $size: "$subscribers"
+                    },
+                    channelSubscribedToCount: {
+                        $size: "$subscribedTo"
+                    },
+                    isSubscribe: {
+                        $cond: {
+                            if: {
+                                $in: [req.user?._id, "$subscribers.subscribe"]
+                            },
+                            then: true,
+                            else: false
+                        }
+                    }
+                },
+                $project: {
+                    userName: 1,
+                    fullName: 1,
+                    avatar: 1,
+                    coverImage: 1,
+                    subscribeCount: 1,
+                    channelSubscribedToCount: 1,
+                    isSubscribe: 1
+                }
+            }
+        ])
+
+        if (!channel?.length) {
+            throw new ApiError(404, "Channel not found")
+        }
+
+        return res.status(200).json(
+            new ApiResponse(
+                200, 
+                channel[0],
+                "Success"
+            )
+        )
+
+    } catch (error) {
+        throw new ApiError(401, error?.message)
+    }
+})
+
 export {
     registerUser,
     logIn,
