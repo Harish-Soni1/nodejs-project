@@ -4,6 +4,7 @@ import { ApiResponse } from "../common/apiResponse.js"
 import uploadOnCloudinary from "../common/cloudinary.js"
 import { asyncHandler } from "../common/asyncHandler.js";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 
 const generateAccessAndRefreshToken = async (userId) => {
 
@@ -36,11 +37,11 @@ const registerUser = asyncHandler( async (req, res) => {
     }
 
     const existedUser = await Users.findOne({
-        $or: [{ username }, { email }]
+        $or: [{ userName }, { email }]
     })
 
     if (existedUser) {
-        throw new ApiError(409, "User with email or username already exists")
+        throw new ApiError(409, "User with email or userName already exists")
     }
 
     const avatarLocalPath = req.files?.avatar[0]?.path
@@ -50,7 +51,7 @@ const registerUser = asyncHandler( async (req, res) => {
         coverImageLocalPath = req.files.coverImage[0].path
     }
 
-    if (!avatar){
+    if (!avatarLocalPath){
         return new ApiError(400, "avatar is required")
     }
 
@@ -61,7 +62,7 @@ const registerUser = asyncHandler( async (req, res) => {
         throw new ApiError(400, "Avatar file is required")
     }
 
-    const user = await User.create({
+    const user = await Users.create({
         fullName,
         avatar: avatar.url,
         coverImage: coverImage?.url || "",
@@ -70,7 +71,7 @@ const registerUser = asyncHandler( async (req, res) => {
         userName: userName.toLowerCase()
     })
 
-    const createdUser = await User.findById(user._id).select(
+    const createdUser = await Users.findById(user._id).select(
         "-password -refreshToken"
     )
 
@@ -450,6 +451,68 @@ const getChannelProfile = asyncHandler( async(req, res) => {
     }
 })
 
+const getWatchHistory = asyncHandler (async (req, res) => {
+
+    try {
+        
+        const user = await Users.aggregate([
+            {
+                $match: {
+                    _id: mongoose.Types.ObjectId(req.user._id)
+                },
+                $lookup: {
+                    from: "videos",
+                    localField: "waychHistory",
+                    foreignField: "_id",
+                    as: "watchHistory",
+                    pipeline: [
+                        {
+                            $lookup: {
+                                from: "users",
+                                localField: "owner",
+                                foreignField: "_id",
+                                as: "owner",
+                                pipeline: [
+                                    {
+                                        $project: {
+                                            userName: 1,
+                                            fullName: 1,
+                                            avatar: 1
+                                        }
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            $addFields: {
+                                owner: {
+                                    $first: "$owner"
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        ])
+
+        if (!user?.length) {
+            throw new ApiError(404, "watch history not found")
+        }
+
+        return res.status(200).json(
+            new ApiResponse(
+                200, 
+                user[0].watchHistory,
+                "Success"
+            )
+        )
+
+    } catch (error) {
+        throw new ApiError(401, error?.message)
+    }
+
+})
+
 export {
     registerUser,
     logIn,
@@ -459,5 +522,7 @@ export {
     changePassword,
     getCurrentUser,
     updateUserAvatar,
-    updateUserCover
+    updateUserCover,
+    getChannelProfile,
+    getWatchHistory
 };
